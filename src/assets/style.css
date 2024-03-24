@@ -1,0 +1,10 @@
+    .modebar-group {
+        justify-content: center !important;
+    }
+    .modebar{
+        position: absolute;
+        left:45%;
+    }
+    .modebar-btn {
+        font-size: 25px !important;
+    }
