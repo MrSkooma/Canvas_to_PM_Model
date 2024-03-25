@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from dash import dash, html, dcc, Output, Input, State, ctx
 import dash_bootstrap_components as dbc
@@ -10,6 +12,7 @@ from random_events.variables import Continuous
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SLATE], suppress_callback_exceptions=True)
 
 app.layout = dbc.Container([
+    dcc.Store(id="model"),
     dbc.Row([dbc.Col(html.H1('Dash'))]),
     dbc.Row([
         dbc.Col([
@@ -32,29 +35,44 @@ app.layout = dbc.Container([
         ])
     ]),
     dbc.Row([
-        dbc.Col([html.Div(children="Min_X")]),
-        dbc.Col(dcc.Input(id="min_x-achse", type="number", value=1)),
+        #dbc.Col([html.Div(children="Min_X")]),
+        dbc.Col(dcc.Input(id="min_x-achse", name="Min x", type="number", value=1)),
         dbc.Col([html.Div(children="Max_X")]),
         dbc.Col(dcc.Input(id="max_x-achse", type="number", value=10)),
         dbc.Col([html.Div(children="DPI")]),
         dbc.Col(dcc.Input(id="DPI", type="number", value=10)),
     ], className="m-3 border rounded  border-white"),
     dbc.Row([
-        dbc.Button(id="plot", name="Plot", n_clicks=0)
-    ]),
+        dbc.Button("Plot", id="plot", n_clicks=0)
+    ], className="m-2"),
     dbc.Row(id="output", children=[
         dbc.Col([html.Div(children="MSQ")]),
-        dbc.Col(dcc.Input(id="msq", type="number", value=10)),
+        dbc.Col(dcc.Input(id="msq",  type="number", value=10)),
         dbc.Col([html.Div(children="MLI")]),
         dbc.Col(dcc.Input(id="mli", type="number", value=0.001))
-    ], className="m-3 border rounded  border-white")
+    ], className="m-3 border rounded  border-white"),
+    dbc.Row([
+        dbc.Button("Download", id="download", n_clicks=0),
+        dcc.Download(id="output_model")
+    ], className="m-2")
 ])
+
+@app.callback(
+    Output("output_model", "data"),
+    Input("download", "n_clicks"),
+    State("model", "data"),
+    prevent_initial_call=True,
+)
+def download_model(n_clicks, model):
+    content = json.dumps(model)
+    return dict(content=content, filename="model.json")
 
 
 @app.callback(
     Output("canvas", "figure"),
     Output("min_x-achse", "value"),
     Output("max_x-achse", "value"),
+    Output("model", "data"),
     Input("plot", "n_clicks"),
     Input("min_x-achse", "value"),
     Input("max_x-achse", "value"),
@@ -65,11 +83,10 @@ app.layout = dbc.Container([
     State('mli', "value"),
 )
 def canvas(n1, min_x, max_x, fig, relayoutData, dpi, msq, mli):
-    print(f"min_x: {min_x}, max_x: {max_x}, fig: {fig}")
+
     cb = ctx.triggered_id if not None else None
-    print(cb)
     if cb is None:
-        return fig, min_x, max_x
+        return fig, min_x, max_x, []
     elif cb in ["min_x-achse", "max_x-achse"]:
         if min_x is None or max_x is None:
             min_x = 1
@@ -80,14 +97,14 @@ def canvas(n1, min_x, max_x, fig, relayoutData, dpi, msq, mli):
             min_x = max_x
             max_x = temp
         fig["layout"]["xaxis"]["range"] = [min_x, max_x]
-        return fig, min_x, max_x,
+        return fig, min_x, max_x, []
     elif cb == "plot":
-        fig["data"], new_shapes = plot(relayoutData, dpi, msq, mli, min_x, max_x)
+        fig["data"], new_shapes, model = plot(relayoutData, dpi, msq, mli, min_x, max_x)
 
         for i in range(len(new_shapes)):
             fig["layout"]["shapes"][i]['path'] = new_shapes[i]
 
-        return fig, min_x, max_x
+        return fig, min_x, max_x, model
     else:
         raise Exception(f"Unknown callback: {cb}")
 
@@ -140,7 +157,6 @@ def plot(relayoutData, dpi, min_sample_per_quantile=10, min_likelihood_improveme
                 raise ValueError("Invalid path Component")
         relay_paths.append(relay_path)
 
-    print(len(points))
     variable = Continuous("x")
     distribution = NygaDistribution(variable, min_sample_per_quantile, min_likelihood_improvement)
 
@@ -167,7 +183,7 @@ def plot(relayoutData, dpi, min_sample_per_quantile=10, min_likelihood_improveme
             relayoutData_new_string += f"{t}{point[0]},{point[1] * ratio}"
         new_shapes.append(relayoutData_new_string)
 
-    return dis_plot, new_shapes
+    return dis_plot, new_shapes, distribution.to_json()
 
 
 if __name__ == '__main__':
